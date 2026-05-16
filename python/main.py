@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import datetime
 import io
 import json
 import os
@@ -62,6 +63,7 @@ async def api_create_item(
     condition: str = Form("Good"),
     price: float = Form(0.0),
     suggested_price: float = Form(0.0),
+    cost: float = Form(0.0),
     platforms: str = Form("[]"),
     status: str = Form("draft"),
     image: UploadFile | None = File(None),
@@ -83,6 +85,7 @@ async def api_create_item(
         "condition": condition,
         "price": price,
         "suggested_price": suggested_price,
+        "cost": cost,
         "image_path": image_path,
         "platforms_json": platforms,
         "status": status,
@@ -114,6 +117,7 @@ async def api_update_item(
     condition: str = Form(""),
     price: float = Form(0.0),
     suggested_price: float = Form(0.0),
+    cost: float = Form(0.0),
     platforms: str = Form(""),
     status: str = Form(""),
     image: UploadFile | None = File(None),
@@ -133,6 +137,8 @@ async def api_update_item(
         data["price"] = price
     if suggested_price > 0:
         data["suggested_price"] = suggested_price
+    if cost >= 0:
+        data["cost"] = cost
     if platforms:
         data["platforms_json"] = platforms
     if status:
@@ -469,6 +475,210 @@ def api_export_ebay():
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=ebay_upload.csv"},
     )
+
+
+# ───────────────────────────────────────────────────────────────
+# Reports & Financial Analysis
+# ───────────────────────────────────────────────────────────────
+
+
+@app.get("/api/report")
+def api_report():
+    """Financial summary report for the entire inventory."""
+    all_items = get_items(limit=10000)
+
+    total_items = len(all_items)
+    total_cost = sum(i.get("cost") or 0 for i in all_items)
+    total_value = sum(i.get("price") or 0 for i in all_items)
+    total_suggested = sum(i.get("suggested_price") or 0 for i in all_items)
+
+    draft_items = [i for i in all_items if (i.get("status") or "draft") == "draft"]
+    listed_items = [i for i in all_items if (i.get("status") or "") == "listed"]
+    sold_items = [i for i in all_items if (i.get("status") or "") == "sold"]
+
+    draft_count = len(draft_items)
+    listed_count = len(listed_items)
+    sold_count = len(sold_items)
+
+    draft_value = sum(i.get("price") or 0 for i in draft_items)
+    listed_value = sum(i.get("price") or 0 for i in listed_items)
+    sold_value = sum(i.get("price") or 0 for i in sold_items)
+
+    sold_cost = sum(i.get("cost") or 0 for i in sold_items)
+    profit = sold_value - sold_cost
+    margin_pct = round((profit / sold_value) * 100, 2) if sold_value > 0 else 0.0
+
+    # Category breakdown
+    cat_stats = {}
+    for i in all_items:
+        cat = i.get("category") or "Other"
+        if cat not in cat_stats:
+            cat_stats[cat] = {"count": 0, "value": 0.0, "sold_value": 0.0, "cost": 0.0}
+        cat_stats[cat]["count"] += 1
+        cat_stats[cat]["value"] += i.get("price") or 0
+        cat_stats[cat]["cost"] += i.get("cost") or 0
+        if (i.get("status") or "") == "sold":
+            cat_stats[cat]["sold_value"] += i.get("price") or 0
+
+    # Condition breakdown
+    cond_stats = {}
+    for i in all_items:
+        cond = i.get("condition") or "Unknown"
+        if cond not in cond_stats:
+            cond_stats[cond] = {"count": 0, "avg_price": 0.0, "total": 0.0}
+        cond_stats[cond]["count"] += 1
+        cond_stats[cond]["total"] += i.get("price") or 0
+    for cond in cond_stats:
+        cond_stats[cond]["avg_price"] = round(cond_stats[cond]["total"] / cond_stats[cond]["count"], 2) if cond_stats[cond]["count"] > 0 else 0.0
+
+    # Top items by price
+    top_items = sorted(all_items, key=lambda x: x.get("price") or 0, reverse=True)[:10]
+
+    return {
+        "summary": {
+            "total_items": total_items,
+            "total_cost": round(total_cost, 2),
+            "total_value": round(total_value, 2),
+            "total_suggested_value": round(total_suggested, 2),
+            "potential_profit": round(total_value - total_cost, 2),
+            "draft_count": draft_count,
+            "listed_count": listed_count,
+            "sold_count": sold_count,
+            "draft_value": round(draft_value, 2),
+            "listed_value": round(listed_value, 2),
+            "sold_value": round(sold_value, 2),
+            "sold_cost": round(sold_cost, 2),
+            "profit": round(profit, 2),
+            "margin_percent": margin_pct,
+        },
+        "category_breakdown": cat_stats,
+        "condition_breakdown": cond_stats,
+        "top_items": [{"id": i["id"], "name": i["name"], "price": i.get("price"), "status": i.get("status")} for i in top_items],
+    }
+
+
+@app.get("/api/report/print")
+def api_print_report():
+    """Generate a printer-friendly HTML inventory report."""
+    report = api_report()
+    summary = report["summary"]
+    cats = report["category_breakdown"]
+    conds = report["condition_breakdown"]
+    top = report["top_items"]
+    all_items = get_items(limit=10000)
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Inventory Report</title>
+<style>
+  body {{ font-family: Arial, sans-serif; margin: 40px; color: #333; }}
+  h1 {{ color: #6366f1; border-bottom: 3px solid #6366f1; padding-bottom: 10px; }}
+  h2 {{ color: #444; margin-top: 30px; }}
+  .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 20px 0; }}
+  .card {{ background: #f8f9fa; border-radius: 8px; padding: 15px; text-align: center; border-left: 4px solid #6366f1; }}
+  .card h3 {{ margin: 0; font-size: 1.8rem; color: #6366f1; }}
+  .card p {{ margin: 5px 0 0; color: #666; font-size: 0.9rem; }}
+  .profit {{ border-left-color: #10b981; }}
+  .profit h3 {{ color: #10b981; }}
+  .sold {{ border-left-color: #f59e0b; }}
+  .sold h3 {{ color: #f59e0b; }}
+  table {{ width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 0.9rem; }}
+  th, td {{ padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }}
+  th {{ background: #6366f1; color: white; }}
+  tr:hover {{ background: #f5f5f5; }}
+  .status-sold {{ color: #10b981; font-weight: bold; }}
+  .status-listed {{ color: #f59e0b; font-weight: bold; }}
+  .status-draft {{ color: #6b7280; }}
+  .no-print {{ margin: 20px 0; }}
+  .btn {{ padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem; margin-right: 10px; }}
+  .btn-primary {{ background: #6366f1; color: white; }}
+  .btn-secondary {{ background: #e5e7eb; color: #333; }}
+  @media print {{ .no-print {{ display: none; }} body {{ margin: 20px; }} }}
+</style>
+</head>
+<body>
+  <div class="no-print">
+    <button class="btn btn-primary" onclick="window.print()">🖨️ Print Report</button>
+    <button class="btn btn-secondary" onclick="window.location.href='/api/export/csv'">📊 Download CSV</button>
+    <button class="btn btn-secondary" onclick="navigator.share({{title:'Inventory Report',url:window.location.href}}).catch(()=>{{}})">📤 Share</button>
+  </div>
+
+  <h1>🛒 Inventory Report</h1>
+  <p>Generated on: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}</p>
+
+  <h2>Financial Summary</h2>
+  <div class="grid">
+    <div class="card"><h3>${summary['total_value']:.2f}</h3><p>Total Inventory Value</p></div>
+    <div class="card"><h3>${summary['total_cost']:.2f}</h3><p>Total Cost Basis</p></div>
+    <div class="card profit"><h3>${summary['potential_profit']:.2f}</h3><p>Potential Profit</p></div>
+    <div class="card sold"><h3>${summary['sold_value']:.2f}</h3><p>Revenue (Sold)</p></div>
+    <div class="card profit"><h3>${summary['profit']:.2f}</h3><p>Actual Profit</p></div>
+    <div class="card"><h3>{summary['margin_percent']:.1f}%</h3><p>Profit Margin</p></div>
+    <div class="card"><h3>{summary['total_items']}</h3><p>Total Items</p></div>
+    <div class="card sold"><h3>{summary['sold_count']}</h3><p>Items Sold</p></div>
+  </div>
+
+  <h2>Status Breakdown</h2>
+  <div class="grid">
+    <div class="card"><h3>{summary['draft_count']}</h3><p>Draft Items</p></div>
+    <div class="card listed"><h3>{summary['listed_count']}</h3><p>Listed Items</p></div>
+    <div class="card sold"><h3>{summary['sold_count']}</h3><p>Sold Items</p></div>
+    <div class="card"><h3>${summary['draft_value']:.2f}</h3><p>Draft Value</p></div>
+    <div class="card listed"><h3>${summary['listed_value']:.2f}</h3><p>Listed Value</p></div>
+    <div class="card sold"><h3>${summary['sold_value']:.2f}</h3><p>Sold Value</p></div>
+  </div>
+
+  <h2>Category Breakdown</h2>
+  <table>
+    <tr><th>Category</th><th>Items</th><th>Value</th><th>Sold</th><th>Cost</th><th>Margin</th></tr>
+"""
+    for cat, stats in sorted(cats.items(), key=lambda x: x[1]["value"], reverse=True):
+        margin = round((stats["sold_value"] - stats["cost"]) / stats["sold_value"] * 100, 1) if stats["sold_value"] > 0 else 0.0
+        html += f"""    <tr><td>{cat}</td><td>{stats['count']}</td><td>${stats['value']:.2f}</td><td>${stats['sold_value']:.2f}</td><td>${stats['cost']:.2f}</td><td>{margin}%</td></tr>
+"""
+
+    html += """  </table>
+
+  <h2>Condition Breakdown</h2>
+  <table>
+    <tr><th>Condition</th><th>Items</th><th>Avg Price</th><th>Total Value</th></tr>
+"""
+    for cond, stats in sorted(conds.items(), key=lambda x: x[1]["count"], reverse=True):
+        html += f"""    <tr><td>{cond}</td><td>{stats['count']}</td><td>${stats['avg_price']:.2f}</td><td>${stats['total']:.2f}</td></tr>
+"""
+
+    html += """  </table>
+
+  <h2>Top Items by Price</h2>
+  <table>
+    <tr><th>#</th><th>Item</th><th>Price</th><th>Status</th></tr>
+"""
+    for idx, item in enumerate(top, 1):
+        status_class = f"status-{item['status']}" if item.get("status") else "status-draft"
+        html += f"""    <tr><td>{idx}</td><td>{item['name'] or 'Untitled'}</td><td>${item['price'] or 0:.2f}</td><td class="{status_class}">{item['status'] or 'draft'}</td></tr>
+"""
+
+    html += """  </table>
+
+  <h2>Full Inventory</h2>
+  <table>
+    <tr><th>Item</th><th>Brand</th><th>Category</th><th>Condition</th><th>Cost</th><th>Price</th><th>Status</th></tr>
+"""
+    for item in sorted(all_items, key=lambda x: x.get("price") or 0, reverse=True):
+        status_class = f"status-{item.get('status')}" if item.get("status") else "status-draft"
+        html += f"""    <tr><td>{item.get('name') or 'Untitled'}</td><td>{item.get('brand') or ''}</td><td>{item.get('category') or ''}</td><td>{item.get('condition') or ''}</td><td>${item.get('cost') or 0:.2f}</td><td>${item.get('price') or 0:.2f}</td><td class="{status_class}">{item.get('status') or 'draft'}</td></tr>
+"""
+
+    html += """  </table>
+
+  <div style="margin-top: 40px; text-align: center; color: #999; font-size: 0.8rem;">
+    <p>Generated by Garage Sale Inventory App</p>
+  </div>
+</body>
+</html>"""
+    return HTMLResponse(content=html)
 
 
 # ───────────────────────────────────────────────────────────────

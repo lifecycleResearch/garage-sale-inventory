@@ -127,6 +127,7 @@ function initNavigation() {
       document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       if (sectionId === 'inventory-section') loadInventory();
+      if (sectionId === 'report-section') loadReport();
     });
   });
 }
@@ -145,6 +146,7 @@ function initForms() {
     formData.append('category', document.getElementById('item-category').value);
     formData.append('condition', document.getElementById('item-condition').value);
     formData.append('price', document.getElementById('item-price').value || '0');
+    formData.append('cost', document.getElementById('item-cost').value || '0');
     const suggested = document.getElementById('suggested-price-value').textContent;
     if (suggested && suggested !== '0') formData.append('suggested_price', suggested);
     if (currentPhotoBlob) {
@@ -358,6 +360,7 @@ async function editItem(id) {
   document.getElementById('item-description').value = item.description || '';
   document.getElementById('item-category').value = item.category || 'Other';
   document.getElementById('item-condition').value = item.condition || 'Good';
+  document.getElementById('item-cost').value = item.cost || '';
   document.getElementById('item-price').value = item.price || '';
   if (item.suggested_price) {
     document.getElementById('suggested-price-value').textContent = item.suggested_price;
@@ -402,6 +405,34 @@ async function deleteItem(id) {
   } catch (e) {
     showToast('Error deleting', 'error');
   }
+}
+
+// ─── Report ─────────────────────────────────────────────────────────────
+
+async function loadReport() {
+  try {
+    const data = await api('/api/report');
+    const s = data.summary;
+    const cards = document.getElementById('report-cards');
+    cards.innerHTML = `
+      <div class="report-card"><h4>$${s.total_value.toFixed(2)}</h4><p>Total Value</p></div>
+      <div class="report-card"><h4>$${s.total_cost.toFixed(2)}</h4><p>Total Cost</p></div>
+      <div class="report-card profit"><h4>$${s.potential_profit.toFixed(2)}</h4><p>Potential Profit</p></div>
+      <div class="report-card"><h4>$${s.sold_value.toFixed(2)}</h4><p>Revenue</p></div>
+      <div class="report-card profit"><h4>$${s.profit.toFixed(2)}</h4><p>Actual Profit</p></div>
+      <div class="report-card"><h4>${s.margin_percent}%</h4><p>Margin</p></div>
+      <div class="report-card"><h4>${s.total_items}</h4><p>Items</p></div>
+      <div class="report-card sold"><h4>${s.sold_count}</h4><p>Sold</p></div>
+    `;
+
+    let catHtml = '<h3>By Category</h3><table class="report-table"><tr><th>Category</th><th>Count</th><th>Value</th><th>Profit</th></tr>';
+    for (const [cat, stats] of Object.entries(data.category_breakdown).sort((a,b) => b[1].value - a[1].value)) {
+      const profit = stats.sold_value - stats.cost;
+      catHtml += `<tr><td>${cat}</td><td>${stats.count}</td><td>$${stats.value.toFixed(2)}</td><td>$${profit.toFixed(2)}</td></tr>`;
+    }
+    catHtml += '</table>';
+    document.getElementById('report-details').innerHTML = catHtml;
+  } catch (e) { console.error(e); }
 }
 
 // ─── Platforms ──────────────────────────────────────────────────────────

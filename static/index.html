@@ -70,6 +70,12 @@
                         </select>
                     </div>
                     <div class="form-group">
+                        <label>Cost ($)</label>
+                        <input type="number" id="item-cost" placeholder="0.00" min="0" step="0.01">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
                         <label>Your Price ($)</label>
                         <input type="number" id="item-price" placeholder="0.00" min="0" step="0.01">
                     </div>
@@ -110,6 +116,22 @@
             <h2>Platforms</h2>
             <div id="platforms-list" class="platforms-list"></div>
         </section>
+
+        <!-- Report Section -->
+        <section id="report-section" class="section">
+            <div class="section-header">
+                <h2>📊 Inventory Report</h2>
+            </div>
+            <div id="report-content" class="report-content">
+                <div class="report-actions">
+                    <button class="btn btn-primary" id="btn-view-report" onclick="window.open('/api/report/print', '_blank')">🖨️ Print Report</button>
+                    <button class="btn btn-secondary" onclick="window.location.href='/api/export/csv'">📊 Download CSV</button>
+                    <button class="btn btn-secondary" id="btn-share-report">📤 Share</button>
+                </div>
+                <div id="report-cards" class="report-cards"></div>
+                <div id="report-details"></div>
+            </div>
+        </section>
     </main>
 
     <!-- Bottom Navigation -->
@@ -126,6 +148,10 @@
         <button class="nav-btn" data-section="platforms-section">
             <span class="nav-icon">🚀</span>
             <span class="nav-label">List</span>
+        </button>
+        <button class="nav-btn" data-section="report-section">
+            <span class="nav-icon">📊</span>
+            <span class="nav-label">Report</span>
         </button>
     </nav>
 

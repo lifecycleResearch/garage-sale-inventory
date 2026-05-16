@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS items (
     condition TEXT,
     price REAL,
     suggested_price REAL,
+    cost REAL,
     image_path TEXT,
     platforms_json TEXT DEFAULT '[]',
     status TEXT DEFAULT 'draft',
