@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1a1a2e">
+<title>Garage Sale Inventory</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="manifest" href="manifest.json">
+</head>
+<body>
+<div id="app">
+    <!-- Header -->
+    <header class="app-header">
+        <h1>🛒 Garage Sale</h1>
+        <span class="badge" id="inventory-count">0 items</span>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Camera Section -->
+        <section id="camera-section" class="section active">
+            <div class="camera-container">
+                <video id="camera-video" autoplay playsinline muted></video>
+                <canvas id="camera-canvas" style="display:none;"></canvas>
+                <img id="photo-preview" class="photo-preview" style="display:none;">
+                <div class="camera-overlay" id="camera-overlay">
+                    <button class="btn btn-primary btn-large" id="btn-start-camera">📷 Take Photo</button>
+                    <input type="file" id="file-input" accept="image/*" capture="environment" style="display:none;">
+                    <button class="btn btn-secondary" id="btn-upload-file">📁 Choose Photo</button>
+                </div>
+                <div class="camera-controls" id="camera-controls" style="display:none;">
+                    <button class="btn btn-primary btn-circle" id="btn-snap">📸</button>
+                    <button class="btn btn-secondary" id="btn-retake" style="display:none;">↺ Retake</button>
+                </div>
+            </div>
+
+            <!-- Item Form -->
+            <form id="item-form" class="item-form" style="display:none;">
+                <h2>Add Item</h2>
+                <div class="form-group">
+                    <label>Name</label>
+                    <input type="text" id="item-name" placeholder="e.g. Vintage Leather Jacket" required>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Brand</label>
+                        <input type="text" id="item-brand" placeholder="e.g. Levi's">
+                    </div>
+                    <div class="form-group">
+                        <label>Category</label>
+                        <select id="item-category">
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="item-description" rows="2" placeholder="Describe the item..."></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Condition</label>
+                        <select id="item-condition">
+                            <option>New</option>
+                            <option selected>Like New</option>
+                            <option>Good</option>
+                            <option>Fair</option>
+                            <option>Poor</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Your Price ($)</label>
+                        <input type="number" id="item-price" placeholder="0.00" min="0" step="0.01">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="suggested-price" id="suggested-price-display" style="display:none;">
+                        💡 Suggested: $<span id="suggested-price-value">0</span>
+                        <button type="button" class="btn btn-link" id="btn-use-suggested">Use</button>
+                    </label>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-ghost" id="btn-find-comps">🔍 Find Comps</button>
+                    <button type="submit" class="btn btn-primary">💾 Save Item</button>
+                </div>
+                <div class="ai-status" id="ai-status"></div>
+            </form>
+        </section>
+
+        <!-- Inventory Section -->
+        <section id="inventory-section" class="section">
+            <div class="section-header">
+                <h2>Inventory</h2>
+                <div class="filters">
+                    <button class="filter-btn active" data-filter="all">All</button>
+                    <button class="filter-btn" data-filter="draft">Draft</button>
+                    <button class="filter-btn" data-filter="listed">Listed</button>
+                    <button class="filter-btn" data-filter="sold">Sold</button>
+                </div>
+            </div>
+            <div id="inventory-grid" class="inventory-grid"></div>
+            <div id="empty-state" class="empty-state" style="display:none;">
+                <p>No items yet. Snap your first photo!</p>
+            </div>
+        </section>
+
+        <!-- Platforms Section -->
+        <section id="platforms-section" class="section">
+            <h2>Platforms</h2>
+            <div id="platforms-list" class="platforms-list"></div>
+        </section>
+    </main>
+
+    <!-- Bottom Navigation -->
+    <nav class="bottom-nav">
+        <button class="nav-btn active" data-section="camera-section">
+            <span class="nav-icon">📷</span>
+            <span class="nav-label">Add</span>
+        </button>
+        <button class="nav-btn" data-section="inventory-section">
+            <span class="nav-icon">📦</span>
+            <span class="nav-label">Inventory</span>
+            <span class="nav-badge" id="nav-badge">0</span>
+        </button>
+        <button class="nav-btn" data-section="platforms-section">
+            <span class="nav-icon">🚀</span>
+            <span class="nav-label">List</span>
+        </button>
+    </nav>
+
+    <!-- Bulk Actions Bar (sticky, appears when items selected) -->
+    <div id="bulk-bar" class="bulk-bar" style="display:none;">
+        <label class="select-all">
+            <input type="checkbox" id="select-all-checkbox">
+            <span>Select All</span>
+        </label>
+        <button class="btn btn-primary" id="btn-list-selected">📤 List Selected</button>
+        <button class="btn btn-secondary" id="btn-export-csv">📊 CSV</button>
+    </div>
+
+    <!-- Comps Modal -->
+    <div id="comps-modal" class="modal">
+        <div class="modal-content">
+            <header class="modal-header">
+                <h3>💰 Price Comps</h3>
+                <button class="btn btn-close" id="btn-close-comps">&times;</button>
+            </header>
+            <div id="comps-results" class="comps-results"></div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" id="btn-use-comp-price">Use Suggested</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Listings Modal -->
+    <div id="listings-modal" class="modal">
+        <div class="modal-content modal-large">
+            <header class="modal-header">
+                <h3>🚀 List to Platforms</h3>
+                <button class="btn btn-close" id="btn-close-listings">&times;</button>
+            </header>
+            <div class="platform-checkboxes" id="platform-checkboxes"></div>
+            <div id="listings-preview" class="listings-preview"></div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" id="btn-generate-listings">Generate Listings</button>
+                <button class="btn btn-success" id="btn-copy-all" style="display:none;">📋 Copy All</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Auth Modal -->
+    <div id="auth-modal" class="modal">
+        <div class="modal-content">
+            <header class="modal-header">
+                <h3 id="auth-modal-title">Connect Platform</h3>
+                <button class="btn btn-close" id="btn-close-auth">&times;</button>
+            </header>
+            <form id="auth-form" class="auth-form"></form>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="toast"></div>
+
+    <!-- Loading -->
+    <div id="loading" class="loading" style="display:none;">
+        <div class="spinner"></div>
+        <p>Working...</p>
+    </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
